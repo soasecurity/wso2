@@ -1,1 +1,1 @@
-# wso2
+# WSO2 related extensions and samples

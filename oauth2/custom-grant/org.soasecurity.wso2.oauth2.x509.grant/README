@@ -1,0 +1,11 @@
+   README 
+   ======
+   
+1. Implementation details is in here [1]
+
+2. Use maven 3 to build the project.
+
+3. Configuration details also can find from there [1]
+
+
+[1]http://xacmlinfo.org/2015/01/20/custom-grant-type-with-oauth/   

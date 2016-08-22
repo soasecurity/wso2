@@ -77,13 +77,10 @@ public class MutualSSLFilter implements Filter {
 
             chain.doFilter(wrapper, response);
 
-
         } else {
-            // fail the request as mutual authentication has not been happened at transport level
-            log.error("Mutual SSL authentication is failed.");
-            ((HttpServletResponse)response).sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-        }
 
+            chain.doFilter(request, response);
+        }
 	}
 
 	@Override

@@ -1,0 +1,21 @@
+   README 
+   ======
+
+This is custom grant type to retrieve access token by providing a cookie which is returned from forgerock OpenAM.
+
+This has been tested in WSO2IS 5.3.0 & APIM 2.1.0 with the cookies provided by OpenAM 13.5.0
+   
+1. Implementation details is in here [1]
+
+2. Use maven 3 to build the project.
+
+3. Configuration details also can find from there [1]
+
+
+[1]
+
+<SupportedGrantType>
+<GrantTypeName>openam_cookie</GrantTypeName>
+<GrantTypeHandlerImplClass>org.soasecurity.wso2.oauth2.openam.cookie.grant.OpenAMCookieGrantHandler</GrantTypeHandlerImplClass>
+<GrantTypeValidatorImplClass>org.soasecurity.wso2.oauth2.openam.cookie.grant.OpenAMCookieGrantValidator</GrantTypeValidatorImplClass>
+</SupportedGrantType>

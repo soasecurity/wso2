@@ -1,5 +1,5 @@
 /*
- * Copyright (c) WSO2 Inc. (http://www.wso2.org) All Rights Reserved.
+ * Copyright soasecurity.org  All Rights Reserved.
  *
  * WSO2 Inc. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -29,6 +29,7 @@ import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.util.EntityUtils;
 import org.json.JSONObject;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
+import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.model.RequestParameter;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
@@ -39,13 +40,13 @@ import java.io.IOException;
 
 
 /**
- * X509 grant type for Identity Server
+ * OpenAM Cookie grant type for Identity Server
  */
 public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler  {
 
     private static Log log = LogFactory.getLog(OpenAMCookieGrantHandler.class);
 
-    static final String OPENAM_COOKIE_GRANT_PARAM = "openamcookie";
+    static final String OPENAM_COOKIE_GRANT_PARAM = "cookie";
 
     private static String sessionInfoUrl = "http://localhost:8080/openam/json/realms/root/sessions/?_action=getSessionInfo";
 
@@ -53,18 +54,25 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
 
     @Override
     public void init() throws IdentityOAuth2Exception {
+
         super.init();
 
         PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
         connectionManager.setMaxTotal(100);
 
         httpClient = HttpClients.custom().setConnectionManager(connectionManager).build();
+        String endpointUrl = IdentityUtil.getProperty("OAuth.SupportedGrantTypes.SupportedGrantType.OpenAMSessionEndpoint");
+        if(endpointUrl != null && endpointUrl.trim().length() > 0){
+            sessionInfoUrl = endpointUrl;
+        } else {
+            log.warn("OpenAM session endpoint is not configured and using default end point which is : " + sessionInfoUrl);
+        }
     }
 
     @Override
     public boolean validateGrant(OAuthTokenReqMessageContext oAuthTokenReqMessageContext)  throws IdentityOAuth2Exception {
 
-        log.info("OpenAM Cookie grant handler is invoked");
+        log.debug("OpenAM Cookie grant handler is invoked");
 
         boolean authStatus = false;
 
@@ -72,7 +80,7 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
         RequestParameter[] parameters = oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().getRequestParameters();
 
         String cookie = null;
-        String username = null;
+        String username;
 
         // find out mobile number
         for(RequestParameter parameter : parameters){
@@ -84,9 +92,7 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
         }
 
         if(cookie != null) {
-
             username = validateAndRetrieveUser(cookie);
-
             if (username != null) {
                 log.info("Validated Username : " + username);
                 // if valid set authorized mobile number as grant user
@@ -106,8 +112,8 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
 
     /**
      *
-     * @param cookie
-     * @return
+     * @param cookie OpenAM cookie
+     * @return username which is related to given cookie
      */
     protected String validateAndRetrieveUser(String cookie){
 
@@ -127,21 +133,23 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
             HttpEntity entity = httpResponse.getEntity();
             String response = EntityUtils.toString(entity);
 
-            log.info("Response : " + response);
+            if(log.isDebugEnabled()) {
+                log.debug("Response from OpenAM Session endpoint : " + response);
+            }
 
             JSONObject object = new JSONObject(response);
 
             if(status == HttpStatus.SC_OK) {
-                log.info("Authenticated Cookie");
+                log.debug("Authenticated OpenAM Cookie");
                 username = (String) object.get("username");
             } else if (status == HttpStatus.SC_UNAUTHORIZED) {
-                log.error("Unauthenticated Cookie");
+                log.error("Unauthenticated OpenAM Cookie");
             } else {
                 log.error("Unexpected Error.  Error code :" + status);
             }
 
         } catch (IOException e) {
-            log.error(e);
+            log.error("Unexpected Error", e);
         } finally {
             try {
                 if(httpResponse != null) {
@@ -152,20 +160,6 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
             }
         }
         return username;
-
-    }
-
-
-    public boolean authorizeAccessDelegation(OAuthTokenReqMessageContext tokReqMsgCtx)
-            throws IdentityOAuth2Exception {
-        return true;
-
-    }
-
-
-    public boolean validateScope(OAuthTokenReqMessageContext tokReqMsgCtx)
-            throws IdentityOAuth2Exception {
-        return true;
     }
 
 }

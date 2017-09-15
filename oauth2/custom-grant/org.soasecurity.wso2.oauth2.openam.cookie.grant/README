@@ -19,3 +19,6 @@ This has been tested in WSO2IS 5.3.0 & APIM 2.1.0 with the cookies provided by O
 <GrantTypeHandlerImplClass>org.soasecurity.wso2.oauth2.openam.cookie.grant.OpenAMCookieGrantHandler</GrantTypeHandlerImplClass>
 <GrantTypeValidatorImplClass>org.soasecurity.wso2.oauth2.openam.cookie.grant.OpenAMCookieGrantValidator</GrantTypeValidatorImplClass>
 </SupportedGrantType>
+
+
+curl -k -v -X POST -u uMuF7OfPiEn9C9t7jO722PFFJ8ga:5VpD633iOckPH1k3AaxjbCFw3gEa  -d "grant_type=openam_cookie&openamcookie=AQIC5wM2LY4SfcysP2SbZAGL7i7qd71fsYnFRmiWPNNICX8.*AAJTSQACMDEAAlNLABMtNTc5NDM4OTYxMjM1NzA4ODg1AAJTMQAA*" https://localhost:9443/oauth2/token

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) soasecurity.org  All Rights Reserved.
+ * Copyright (c) soasecurity.org All Rights Reserved.
  *
  * WSO2 Inc. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -15,23 +15,19 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package org.soasecurity.wso2.oauth2.openam.cookie.grant;
 
-import org.apache.oltu.oauth2.common.validators.AbstractValidator;
-
-import javax.servlet.http.HttpServletRequest;
-
+import org.wso2.carbon.apimgt.keymgt.ScopesIssuer;
+import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 
 /**
- * This validate the OpenAM Cookie grant request.
+ * Extended version of OpenAMCookieGrantValidator which can be used with WSO2 APIM
  */
-public class OpenAMCookieGrantValidator extends AbstractValidator<HttpServletRequest> {
+public class ExtendedOpenAMCookieGrantHandler extends OpenAMCookieGrantHandler{
 
-
-    public OpenAMCookieGrantValidator() {
-
-        //cookie must be as a request parameter
-        requiredParams.add(OpenAMCookieGrantHandler.OPENAM_COOKIE_GRANT_PARAM);
+    @Override
+    public boolean validateScope(OAuthTokenReqMessageContext tokReqMsgCtx) {
+        return ScopesIssuer.getInstance().setScopes(tokReqMsgCtx);
     }
+
 }

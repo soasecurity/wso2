@@ -17,12 +17,18 @@
  */
 package org.soasecurity.wso2.oauth2.openam.cookie.grant;
 
+import org.apache.commons.httpclient.contrib.ssl.EasySSLProtocolSocketFactory;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.config.Registry;
+import org.apache.http.config.RegistryBuilder;
+import org.apache.http.conn.socket.ConnectionSocketFactory;
+import org.apache.http.conn.socket.PlainConnectionSocketFactory;
+import org.apache.http.conn.ssl.*;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
@@ -35,8 +41,13 @@ import org.wso2.carbon.identity.oauth2.model.RequestParameter;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.token.handlers.grant.AbstractAuthorizationGrantHandler;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
+import org.wso2.carbon.user.core.UserCoreConstants;
 
+import javax.net.ssl.SSLContext;
 import java.io.IOException;
+import java.security.*;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 
 
 /**
@@ -48,6 +59,12 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
 
     static final String OPENAM_COOKIE_GRANT_PARAM = "cookie";
 
+    static final String OPENAM_DOMAIN_NAME_PARAM = "domainName";
+
+    private static String defaultDomainName = "DHS";
+
+    private static boolean ignoreSslValidation = true;
+
     private static String sessionInfoUrl = "http://localhost:8080/openam/json/realms/root/sessions/?_action=getSessionInfo";
 
     private static CloseableHttpClient httpClient;
@@ -57,16 +74,62 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
 
         super.init();
 
-        PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
+        String endpointUrl = System.getProperty("OpenAM.Session.Endpoint");
+        if(endpointUrl != null && endpointUrl.trim().length() > 0) {
+            sessionInfoUrl = endpointUrl;
+            log.info("Read OpenAM session endpoint from System properly :" + sessionInfoUrl);
+        } else {
+            endpointUrl = IdentityUtil.getProperty("OAuth.SupportedGrantTypes.SupportedGrantType.OpenAMSessionEndpoint");
+            if (endpointUrl != null && endpointUrl.trim().length() > 0) {
+                sessionInfoUrl = endpointUrl;
+                log.info("Read OpenAM session endpoint from identity.xml file :" + sessionInfoUrl);
+            } else {
+                log.warn("OpenAM session endpoint is not configured and using default end point which is : " + sessionInfoUrl);
+            }
+        }
+
+        String domainName = IdentityUtil.getProperty("OAuth.SupportedGrantTypes.SupportedGrantType.OpenAMDefaultDomainName");
+        if(domainName != null && domainName.trim().length() > 0){
+            defaultDomainName = domainName;
+        } else {
+            log.warn("OpenAM Domain name is not configured and using default end point which is : " + sessionInfoUrl);
+        }
+
+        String sslValidation = IdentityUtil.getProperty("OAuth.SupportedGrantTypes.SupportedGrantType.IgnoreSSLValidation");
+        if(sslValidation != null && sslValidation.trim().length() > 0){
+            ignoreSslValidation = Boolean.parseBoolean(sslValidation);
+        } else {
+            log.warn("Ignore SSL validation is not configured and using default end point which is : " + ignoreSslValidation);
+        }
+
+
+        SSLConnectionSocketFactory sslSocketFactory = null;
+
+        if(ignoreSslValidation) {
+
+            try {
+                sslSocketFactory = new SSLConnectionSocketFactory(new EasySSLProtocolSocketFactory(),
+                        SSLConnectionSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
+            } catch (GeneralSecurityException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        } else {
+            sslSocketFactory = SSLConnectionSocketFactory.getSocketFactory();
+        }
+
+
+        Registry<ConnectionSocketFactory> socketFactoryRegistry = RegistryBuilder.<ConnectionSocketFactory>create()
+                .register("http", PlainConnectionSocketFactory.getSocketFactory())
+                .register("https", sslSocketFactory)
+                .build();
+
+
+        PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager(socketFactoryRegistry);
         connectionManager.setMaxTotal(100);
 
         httpClient = HttpClients.custom().setConnectionManager(connectionManager).build();
-        String endpointUrl = IdentityUtil.getProperty("OAuth.SupportedGrantTypes.SupportedGrantType.OpenAMSessionEndpoint");
-        if(endpointUrl != null && endpointUrl.trim().length() > 0){
-            sessionInfoUrl = endpointUrl;
-        } else {
-            log.warn("OpenAM session endpoint is not configured and using default end point which is : " + sessionInfoUrl);
-        }
     }
 
     @Override
@@ -81,6 +144,7 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
 
         String cookie = null;
         String username;
+        String domainName = null;
 
         // find out mobile number
         for(RequestParameter parameter : parameters){
@@ -89,14 +153,27 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
                     cookie = parameter.getValue()[0];
                 }
             }
+            if(OPENAM_DOMAIN_NAME_PARAM.equals(parameter.getKey())){
+                if(parameter.getValue() != null && parameter.getValue().length > 0){
+                    domainName = parameter.getValue()[0];
+                }
+            }
+        }
+
+        if (domainName == null || domainName.trim().length() == 0){
+            domainName = defaultDomainName;
+        } else {
+            domainName =domainName.trim();
         }
 
         if(cookie != null) {
             username = validateAndRetrieveUser(cookie);
             if (username != null) {
                 log.info("Validated Username : " + username);
+                log.info("Domain Name : " + domainName);
                 // if valid set authorized mobile number as grant user
-                AuthenticatedUser user = OAuth2Util.getUserFromUserName(username);
+                AuthenticatedUser user = OAuth2Util.getUserFromUserName(domainName +
+                        UserCoreConstants.DOMAIN_SEPARATOR +username );
                 user.setAuthenticatedSubjectIdentifier(user.toString());
                 oAuthTokenReqMessageContext.setAuthorizedUser(user);
                 oAuthTokenReqMessageContext.setScope(oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().getScope());
@@ -160,6 +237,23 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
             }
         }
         return username;
+    }
+
+
+    private static SSLContext buildSSLContext()
+            throws NoSuchAlgorithmException, KeyManagementException,
+            KeyStoreException {
+        SSLContext sslcontext = SSLContexts.custom()
+                .setSecureRandom(new SecureRandom())
+                .loadTrustMaterial(null, new TrustStrategy() {
+
+                    public boolean isTrusted(X509Certificate[] chain, String authType)
+                            throws CertificateException {
+                        return true;
+                    }
+                })
+                .build();
+        return sslcontext;
     }
 
 }

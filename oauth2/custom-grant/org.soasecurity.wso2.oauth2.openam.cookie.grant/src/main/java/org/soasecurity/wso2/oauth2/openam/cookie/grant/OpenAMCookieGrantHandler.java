@@ -61,7 +61,7 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
 
     static final String OPENAM_DOMAIN_NAME_PARAM = "domainName";
 
-    private static String defaultDomainName = "DHS";
+    private static String defaultDomainName = "PRIMARY";
 
     private static boolean ignoreSslValidation = true;
 
@@ -111,9 +111,9 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
                 sslSocketFactory = new SSLConnectionSocketFactory(new EasySSLProtocolSocketFactory(),
                         SSLConnectionSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
             } catch (GeneralSecurityException e) {
-                e.printStackTrace();
+                log.error(e);
             } catch (IOException e) {
-                e.printStackTrace();
+                log.error(e);
             }
         } else {
             sslSocketFactory = SSLConnectionSocketFactory.getSocketFactory();
@@ -163,7 +163,7 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
         if (domainName == null || domainName.trim().length() == 0){
             domainName = defaultDomainName;
         } else {
-            domainName =domainName.trim();
+            domainName = domainName.trim();
         }
 
         if(cookie != null) {

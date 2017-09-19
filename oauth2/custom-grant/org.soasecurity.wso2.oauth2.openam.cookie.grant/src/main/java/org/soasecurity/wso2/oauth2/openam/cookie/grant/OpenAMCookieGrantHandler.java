@@ -74,9 +74,16 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
 
         super.init();
 
+        String openamUrl = System.getenv("openam_server_url");
+
         String endpointUrl = IdentityUtil.getProperty("OAuth.SupportedGrantTypes.SupportedGrantType.OpenAMSessionEndpoint");
         if (endpointUrl != null && endpointUrl.trim().length() > 0) {
             sessionInfoUrl = endpointUrl;
+            if(openamUrl != null && openamUrl.trim().length() > 0){
+                if(sessionInfoUrl.contains("${openam_server_url}")) {
+                    sessionInfoUrl = sessionInfoUrl.replace("${openam_server_url}", openamUrl);
+                }
+            }
             log.info("Read OpenAM session endpoint from identity.xml file :" + sessionInfoUrl);
         } else {
             log.warn("OpenAM session endpoint is not configured and using default end point which is : " + sessionInfoUrl);

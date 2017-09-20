@@ -59,13 +59,21 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
 
     static final String OPENAM_COOKIE_GRANT_PARAM = "cookie";
 
-    static final String OPENAM_DOMAIN_NAME_PARAM = "domainName";
+    private static final String OPENAM_DOMAIN_NAME_PARAM = "domainName";
+
+    private static final String OPENAM_SESSION_VALIDATION_CONTEXT = "/json/realms/root/sessions/?_action=getSessionInfo";
+
+    private static final String OPENAM_13_SESSION_VALIDATION_CONTEXT = "/json/sessions/?_action=validate";
 
     private static String defaultDomainName = "PRIMARY";
 
     private static boolean ignoreSslValidation = true;
 
     private static String sessionInfoUrl = "http://localhost:8080/openam/json/realms/root/sessions/?_action=getSessionInfo";
+
+    private static String openAM13SessionInfoUrl = null;
+
+
 
     private static CloseableHttpClient httpClient;
 
@@ -78,12 +86,24 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
 
         String endpointUrl = IdentityUtil.getProperty("OAuth.SupportedGrantTypes.SupportedGrantType.OpenAMSessionEndpoint");
         if (endpointUrl != null && endpointUrl.trim().length() > 0) {
+
             sessionInfoUrl = endpointUrl;
+
             if(openamUrl != null && openamUrl.trim().length() > 0){
-                if(sessionInfoUrl.contains("${openam_server_url}")) {
+
+                if("${openam_server_url}".equals(sessionInfoUrl)) {
+                    sessionInfoUrl = openamUrl + OPENAM_SESSION_VALIDATION_CONTEXT;
+                    openAM13SessionInfoUrl  = openamUrl + OPENAM_13_SESSION_VALIDATION_CONTEXT;
+                } else if(sessionInfoUrl.contains("${openam_server_url}")) {
                     sessionInfoUrl = sessionInfoUrl.replace("${openam_server_url}", openamUrl);
                 }
             }
+
+            if(sessionInfoUrl.contains(OPENAM_13_SESSION_VALIDATION_CONTEXT)){
+                openAM13SessionInfoUrl = sessionInfoUrl;
+                sessionInfoUrl = null;
+            }
+
             log.info("Read OpenAM session endpoint from identity.xml file :" + sessionInfoUrl);
         } else {
             log.warn("OpenAM session endpoint is not configured and using default end point which is : " + sessionInfoUrl);
@@ -195,6 +215,12 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
      */
     protected String validateAndRetrieveUser(String cookie){
 
+
+        if(sessionInfoUrl == null && openAM13SessionInfoUrl != null &&
+                openAM13SessionInfoUrl.trim().length() > 0){
+            return validateAndRetrieveUserWithOpenAM13(cookie);
+        }
+
         String username = null;
         CloseableHttpResponse httpResponse = null;
 
@@ -202,14 +228,16 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
         httpPost.setHeader("iplanetDirectoryPro", cookie);
         httpPost.setHeader("Content-Type", "application/json");
 
+        String response = null;
+        int status = 0;
         try {
 
             httpResponse = httpClient.execute(httpPost);
 
-            int status = httpResponse.getStatusLine().getStatusCode();
+            status = httpResponse.getStatusLine().getStatusCode();
 
             HttpEntity entity = httpResponse.getEntity();
-            String response = EntityUtils.toString(entity);
+            response = EntityUtils.toString(entity);
 
             if(log.isDebugEnabled()) {
                 log.debug("Response from OpenAM Session endpoint : " + response);
@@ -222,12 +250,89 @@ public class OpenAMCookieGrantHandler extends AbstractAuthorizationGrantHandler 
                 username = (String) object.get("username");
             } else if (status == HttpStatus.SC_UNAUTHORIZED) {
                 log.error("Unauthenticated OpenAM Cookie");
+                log.error("Unauthenticated Cookie  Value : " + cookie); //TODO remove log in prod
+                log.error("Unauthenticated response : " + response);
             } else {
                 log.error("Unexpected Error.  Error code :" + status);
+                log.error("Erroneous Response : " + response);
             }
 
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("Unexpected Error", e);
+            log.error("Erroneous Status: " + status);
+            log.error("Erroneous Response : " + response);
+            log.error("Erroneous Endpoint : " + sessionInfoUrl);
+            log.error("Erroneous Cookie " + cookie);  //TODO remove log in prod
+        } finally {
+            try {
+                if(httpResponse != null) {
+                    httpResponse.close();
+                }
+            } catch (IOException e) {
+                log.error(e);
+            }
+        }
+
+        if(openAM13SessionInfoUrl != null && (username == null || username.trim().length() == 0)){
+            return validateAndRetrieveUserWithOpenAM13(cookie);
+        } else {
+            return username;
+        }
+    }
+
+
+    private String validateAndRetrieveUserWithOpenAM13(String cookie){
+
+        String username = null;
+        CloseableHttpResponse httpResponse = null;
+
+        HttpPost httpPost = new HttpPost(openAM13SessionInfoUrl);
+        httpPost.setHeader("iplanetDirectoryPro", cookie);
+        httpPost.setHeader("Content-Type", "application/json");
+
+        String response = null;
+        int status = 0;
+        try {
+
+            httpResponse = httpClient.execute(httpPost);
+
+            status = httpResponse.getStatusLine().getStatusCode();
+
+            HttpEntity entity = httpResponse.getEntity();
+            response = EntityUtils.toString(entity);
+
+            if(log.isDebugEnabled()) {
+                log.debug("Response from OpenAM Session endpoint : " + response);
+            }
+
+            JSONObject object = new JSONObject(response);
+
+            if(status == HttpStatus.SC_OK) {
+                Boolean valid = (Boolean) object.get("valid");
+                if(valid) {
+                    log.info("Authenticated OpenAM Cookie");
+                    username = (String) object.get("uid");
+                } else {
+                    log.error("Unauthenticated OpenAM Cookie");
+                    log.error("Unauthenticated Cookie  Value : " + cookie); //TODO remove log in prod
+                    log.error("Unauthenticated response : " + response);
+                }
+
+            } else if (status == HttpStatus.SC_UNAUTHORIZED) {
+                log.error("Unauthenticated OpenAM Cookie");
+                log.error("Unauthenticated Cookie  Value : " + cookie); //TODO remove log in prod
+                log.error("Unauthenticated response : " + response);
+            } else {
+                log.error("Unexpected Error.  Error code :" + status);
+                log.error("Erroneous Response : " + response);
+            }
+
+        } catch (Exception e) {
+            log.error("Unexpected Error", e);
+            log.error("Erroneous Status: " + status);
+            log.error("Erroneous Response : " + response);
+            log.error("Erroneous Endpoint : " + sessionInfoUrl);
+            log.error("Erroneous Cookie " + cookie);  //TODO remove log in prod
         } finally {
             try {
                 if(httpResponse != null) {

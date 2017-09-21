@@ -50,14 +50,16 @@ import org.soasecurity.wso2.apim.openam.cookie.authentication.handler.cache.Clie
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.security.GeneralSecurityException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.TreeMap;
+import java.util.*;
 
 
 /**
  * APIM handler to validate cookie & generate an access token
  * <handler class="org.soasecurity.wso2.apim.openam.cookie.authentication.handler.OpenAMCookieAuthenticationHandler"/>
+ * System properties
+ * apim_client_header_name
+ * openam_cookie_header_names
+ * client_cookie_token_cache_validity_time
  */
 public class OpenAMCookieAuthenticationHandler extends AbstractHandler implements ManagedLifecycle {
 
@@ -114,7 +116,7 @@ public class OpenAMCookieAuthenticationHandler extends AbstractHandler implement
         }
 
         if (token == null) {
-            token = "12345"; // dummy token to fail the request
+            token = "-----This-is-a-dummy-token-from-custom-handler-----"; // dummy token to fail the request
         }
 
         TreeMap headers = (TreeMap) axis2MessageContext.getProperty("TRANSPORT_HEADERS");
@@ -201,27 +203,37 @@ public class OpenAMCookieAuthenticationHandler extends AbstractHandler implement
     private String getOpenAMCookie(MessageContext messageContext){
 
         TreeMap headers = (TreeMap) messageContext.getProperty("TRANSPORT_HEADERS");
-        String cookie = (String) headers.get(getOpenAMCookieHeaderName());
+        Set<String> headersNames = getOpenAMCookieHeaderName();
+        for(String header : headersNames) {
+            String cookie = (String) headers.get(header);
+            if(cookie != null){
+                return cookie;
+            }
+        }
 
-        return cookie;
-
+        return null;
     }
 
     private String getClientIdHeaderName(){
         String name = System.getenv("apim_client_header_name");
-        if(name == null || name.trim().length() > 0){
+        if(name == null || name.trim().length() == 0){
             name = "APIMClientId";
         }
         return name;
     }
 
-    private String getOpenAMCookieHeaderName(){
-        String name = System.getenv("openam_cookie_header_name");
-        if(name == null || name.trim().length() > 0){
-            name = "Cookie";
+    private Set<String> getOpenAMCookieHeaderName(){
+        Set<String> headersNames = new HashSet<String>();
+        String names = System.getenv("openam_cookie_header_names");
+        if(names != null && names.trim().length() > 0) {
+            String[] nameArray = names.split(",");
+            for(String name : nameArray){
+                headersNames.add(name.trim());
+            }
+        } else {
+            headersNames.add("Cookie");
         }
-        return name;
+        return headersNames;
     }
-
 }
 
